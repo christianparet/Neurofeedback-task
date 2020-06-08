@@ -3,4 +3,5 @@ Real-time fmri neurofeedback task. Matlab scripts are used for real-time process
 Stimulus material can be received upon request to christian.paret@zi-mannheim.de
 
 Contribution by other authors:
-Charles Zhao, Yale University, contributed matching of stimulus material
+Charles Zhao, Yale University (USA), contributed matching of stimulus material
+Tomas Slavicek, CEITEC Brno (Czech Republic), contributed code for real-time data processing
