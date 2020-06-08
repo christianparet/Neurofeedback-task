@@ -1,0 +1,192 @@
+# Neurofeedback PCL-program for presentation software, Christian Paret 2019
+###############################################################################
+# Receives condition and feedback info from tcpip.
+#
+# Before start:
+# 1. Set foreign_address to IP of image-receiving computer
+# 2. Go to sce, set scenario_type=fMRI
+###############################################################################
+###############################################################################
+
+preset string ID = "Patient ID";
+preset string run = "01,02,...";
+
+logfile.set_filename("sub-"+ID+"_ses-"+run+"_task-nf.log");
+
+###################################################
+######        Neurofeedback Settings         ######
+###################################################
+
+### TCP/IP settings
+socket insock = new socket;
+string foreign_address = "192.168.19.40"; # BrainVoyager Laptop at Heinz
+#string foreign_address = "10.100.10.51";
+int foreign_port = 8082;
+string value_separator = " ";
+
+###################################################
+######       SUBROUTINES AND VARIABLES       ######
+###################################################
+
+string current_data;
+int bar_index;
+string condition;
+string type;
+double t0_time;
+stimulus_data trial_onset;
+
+sub 
+	string get_data
+begin
+	current_data = insock.receive_delimited(value_separator);
+	term.print("received "+current_data+"\n");
+	return current_data;
+end;
+
+sub int rating (bitmap dimension_bm)  begin
+	int exit_response = 0;
+	int value = 0;
+	scale_default.set_part(1,dimension_bm);
+	loop  until exit_response>0 begin
+		bitmap flip_pic=scale[value+1];
+		scale_default.set_part(2,flip_pic);
+		rating_trial.present();
+		if response_manager.last_response() == 1 && value>0 then 
+			value=value-1;
+		elseif response_manager.last_response() == 2 && value<9 then 
+			value=value+1;
+		elseif response_manager.last_response() == 3 then
+			exit_response=1;
+		end;
+	end;
+	return value;
+end;
+
+int pic_counter = 1;
+int picxTR = 9; # each picture is presented 9 TRs (TR= 2s); 18s long
+int picxTR_counter = 1;
+
+########################################################
+#                Output Text files                     #
+######################################################## 
+output_file outfile_rating = new output_file;
+outfile_rating.open("sub-" + ID + "_ses-" + run + "_rating-nf.txt",0,true);
+
+# make BIDS compatible events-file
+output_file outfile_events = new output_file;
+outfile_events.open("sub-" + ID + "_ses-" + run + "_task-nf_events.tsv",0,true);
+outfile_events.print("onset\tduration\ttrial_type");
+
+###################################################
+######             OPEN SOCKET               ######
+###################################################
+
+bool so = insock.open(foreign_address, foreign_port, 3000);
+insock.set_receive_time_out(60000000); # Don't time-out
+if !so
+then
+	term.print("failed to open socket at: ");
+	term.print(foreign_address);
+	term.print(":");
+	term.print(foreign_port);
+	term.print("\n");
+	exit();
+end;
+
+###################################################
+######              EXPERIMENT               ######
+###################################################
+
+instruction_trial.present();
+
+term.print("Waiting for MRI pulse ...\n");
+loop until (pulse_manager.main_pulse_count() > 0) begin 
+	if pulse_manager.main_pulse_count() > 0 then
+		term.print("Received pulse, it is ok to continue\n");
+	end;
+end;
+t0_time = double(pulse_manager.main_pulse_time(pulse_manager.main_pulse_count()))/1000;
+
+bool stop = false;
+loop until stop begin
+	
+	get_data();
+	condition = current_data;
+	
+	if condition == "wait" then
+		
+	elseif condition == "rest" then
+		rest_trial.present();
+		
+	elseif condition == "VIEW_instruct" then
+		view_instruct_trial.present();
+		
+	elseif condition == "DOWN_instruct" then
+		regulate_instruct_trial.present();
+		
+	elseif condition == "DOWN_trial" then
+		
+		feedback_pic.set_part(1,pic_bmps[pic_counter]);
+	
+		get_data();
+		type = current_data;
+		
+		if type == "transfer" then # we don't use this in brainboost
+			feedback_pic.set_part(2,bar_bmp);
+			feedback_pic.set_part(3,bar_bmp);
+			
+		elseif type == "training" then
+			get_data();
+			bar_index = int(current_data);
+			
+			feedback_pic.set_part(2,bars[bar_index]);
+			feedback_pic.set_part(3,bars[bar_index]);
+			logfile.add_event_entry("bars"+string(bar_index));
+		elseif type == "wait" then
+		else
+			term.print("Unknown condition type, experiment stops");
+			stop = true;
+		end;
+		
+		feedback_event.set_event_code(type+"_"+condition+"_blockelement"+string(picxTR_counter)+"_pic"+string(pic_counter));	
+		feedback_trial.present();
+		
+		# Count TRs of current pic presentation. If exceeds max duration of pic presentation, use next pic.
+		picxTR_counter = picxTR_counter + 1;
+		if picxTR_counter > picxTR then
+			pic_counter = pic_counter + 1;
+			picxTR_counter = 1;
+		end;			
+
+	elseif condition == "VIEW_trial" then
+		
+		feedback_pic.set_part(1,pic_bmps[pic_counter]);
+		feedback_pic.set_part(2,bar_bmp);
+		feedback_pic.set_part(3,bar_bmp);
+		
+		feedback_event.set_event_code(type+"_"+condition+"_blockelement"+string(picxTR_counter)+"_pic"+string(pic_counter));		
+		feedback_trial.present();
+		
+		# Count TRs of current pic presentation. If exceeds max duration of pic presentation, use next pic.
+		picxTR_counter = picxTR_counter + 1;
+		if picxTR_counter > picxTR then
+			pic_counter = pic_counter + 1;
+			picxTR_counter = 1;
+		end;
+				
+	elseif condition == "end" then
+		end_trial.present();
+		stop = true;
+		
+	end;
+	
+	trial_onset = stimulus_manager.get_stimulus_data(stimulus_manager.stimulus_count());
+	outfile_events.print("\n"+string(double(trial_onset.time())/1000-t0_time)+"\t0\t"+condition);
+
+end;	
+
+###################################################
+######               RATING                  ######
+###################################################
+int reg_success = rating(reg_erfolg_bmp); 
+outfile_rating.print(string(reg_success)+"\n");
