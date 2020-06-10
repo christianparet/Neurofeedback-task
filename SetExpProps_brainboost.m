@@ -41,15 +41,16 @@ paradigm.rest(4).duration = 12;
 % if more blocks are needed continue with that scheme until variable paradigm.rest has size of block repetitions
 
 block_repetitions = 4; % Brainboost: 4
-randvar = randperm(block_repetitions); % added by CP, 20200608
+randvar1 = randperm(block_repetitions); % added by CP, 20200608
+randvar2 = randperm(block_repetitions);
 
 for i=1:block_repetitions
     Block(i) = [repmat(paradigm.cond(4).name,[paradigm.cond(4).duration 1]); ...
         repmat(paradigm.cond(3).name,[paradigm.cond(3).duration 1]); ...
-        repmat(paradigm.rest.name,[paradigm.rest.duration 1]);...
+        repmat(paradigm.rest.name,[paradigm.rest(randvar1(i)).duration 1]);... % changed by CP, 20200608
         repmat(paradigm.cond(2).name,[paradigm.cond(2).duration 1]); ...
         repmat(paradigm.cond(1).name,[paradigm.cond(1).duration 1]); ...
-        repmat(paradigm.rest.name,[paradigm.rest(randvar(i)).duration 1])]; % changed by CP, 20200608
+        repmat(paradigm.rest.name,[paradigm.rest(randvar2(i)).duration 1])]; % changed by CP, 20200608
 end
 
 experiment_names = [repmat(paradigm.wait.name,[paradigm.WaitBegin.duration 1]);...
